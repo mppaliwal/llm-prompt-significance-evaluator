@@ -1,83 +1,97 @@
-# Prompt v2 vs v1 Evaluation (Paired, Partial-Credit)
+# Prompt Stat Eval
 
-This repo contains a script to evaluate whether prompt **v2** improves structured extraction quality over **v1** using a paired design.
+Paired evaluation framework for trade confirmation field extraction (`baseline.csv` vs `new.csv`).
 
-Each evaluation unit is `(doc_id, field)` with partial correctness scoring:
-- `1.0` = fully correct
-- `0.5` = partially correct
-- `0.0` = incorrect
+## Project layout
 
-## What the script computes
+- `src/prompt_stat_eval/`
+  - `config.py`: runtime config model
+  - `validation.py`: schema checks, join coverage, paired row construction
+  - `normalize.py`: missing/date/amount/rate/currency/text normalization and matching
+  - `stats.py`: McNemar, bootstrap CI, Clopper-Pearson, metric tables
+  - `reporting.py`: CSV/JSON/Markdown output writers
+  - `pipeline.py`: orchestrates full evaluation run
+  - `cli/`: package-native CLI entry points
+- `streamlit_app.py`: UI for upload, run, and output download
+- `pyproject.toml`: packaging + tooling config
 
-For each unit:
-- `diff = v2_score - v1_score`
-
-Then it reports:
-- `v1` mean score
-- `v2` mean score
-- mean paired difference (`delta`)
-- paired one-sided t-test p-value (`H1: v2 > v1`)
-- bootstrap 95% CI for mean difference
-- final significance verdict (`YES`/`NO`)
-
-A result is marked **statistically significant** when both are true:
-- one-sided t-test p-value `< alpha`
-- bootstrap CI lower bound `> 0`
-
-Default `alpha = 0.05`.
-
-## Input format (JSON only)
-
-Use a JSON array of objects with these keys:
-- `doc_id` (string)
-- `field` (string)
-- `v1_score` (float)
-- `v2_score` (float)
-
-Example:
-
-```json
-[
-  {
-    "doc_id": "D1",
-    "field": "net_revenue",
-    "v1_score": 0.0,
-    "v2_score": 1.0
-  }
-]
-```
-
-By default, valid scores are restricted to `{0.0, 0.5, 1.0}`.
-Use `--allow-any-score` to disable that check.
-
-## Usage
-
-Install dependency:
+## Quick setup (venv + install)
 
 ```bash
-pip install scipy
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
 ```
+
+## Input schema
+
+Both CSV files must include:
+
+- `deal_id`
+- `deal_type`
+- `template`
+- `field_name`
+- `golden_truth`
+- `generated_value`
+
+## CLI usage
 
 Run evaluation:
 
 ```bash
-python3 evaluate_prompt_versions.py prompt_scores.json
+prompt-stat-eval \
+  --baseline data/baseline.csv \
+  --new data/new.csv \
+  --output-dir outputs \
+  --bootstrap-samples 5000 \
+  --seed 42 \
+  --release-id R2026-03-03 \
+  --date-range "2026-01-01 to 2026-02-29"
 ```
 
-Write machine-readable output:
+## Streamlit UI
 
 ```bash
-python3 evaluate_prompt_versions.py prompt_scores.json --write-json report.json
+prompt-stat-ui
 ```
 
-Optional arguments:
-- `--bootstrap-samples 10000` (default `10000`)
-- `--seed 42` (default `42`)
-- `--alpha 0.05` (default `0.05`)
-- `--allow-any-score`
+Or:
 
-## Files
+```bash
+streamlit run streamlit_app.py
+```
 
-- `evaluate_prompt_versions.py`: evaluation script
-- `prompt_scores.json`: expanded sample dataset
-- `report.json`: example output from running the script
+## Outputs
+
+Generated artifacts:
+
+- `paired_eval.csv`
+- `overall_metrics.json`
+- `field_metrics.csv`
+- `stratum_metrics.csv`
+- `rollout_decision.csv`
+- `signed_off_checklist.md`
+- `metadata_mismatch_report.csv` (only when metadata mismatch exists)
+
+## Quality gates and fail-fast behavior
+
+- overall lift gate: `Lift >= 0.01`
+- one-sided exact McNemar test (reported)
+- default significance level fixed at `alpha = 0.05`
+- McNemar interpretation rule: significant only if `p-value < alpha`
+- critical fields: Clopper-Pearson upper 95% bound `<= 0.02`
+- join mismatch threshold fixed at `0.0` (fail on any mismatch)
+- parse-error threshold fixed at `5%` for `date`, `amount`, `rate`
+- golden truth mismatch across baseline/new keys causes hard fail
+
+## Dev workflows
+
+```bash
+ruff check src streamlit_app.py
+mypy src
+```
+
+## Architecture Document
+
+- `docs/architecture_presentation.md`
