@@ -1,0 +1,26 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local runtime outputs
+data/*
+!data/.gitkeep
+!data/baseline.csv
+!data/new.csv
+outputs/*
+!outputs/.gitkeep
+*.log
+local_tools/
+scratch/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
